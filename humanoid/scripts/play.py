@@ -162,7 +162,7 @@ def play(args):
         video.release()
 
 if __name__ == '__main__':
-    EXPORT_POLICY = True
+    EXPORT_POLICY = False
     RENDER = True
     FIX_COMMAND = True
     args = get_args()
