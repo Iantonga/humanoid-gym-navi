@@ -1,0 +1,3 @@
+_resample_commands() legged_robot.py, potentially needed for RL? appears in various places
+rigid_states?
+num_agent = 19 or 20?

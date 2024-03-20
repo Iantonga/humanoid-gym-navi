@@ -33,16 +33,29 @@ from humanoid import LEGGED_GYM_ROOT_DIR
 
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi
-
+from humanoid.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 import torch
 import os
 from humanoid.envs import LeggedRobot
+from humanoid.envs.navi.pedsim import create_nav_sim, compute_nav_sim, set_nav_agent_pos
+
 
 from humanoid.utils.terrain import  HumanoidTerrain
 # from collections import deque
 
 
-class XBotLFreeEnv(LeggedRobot):
+NAV_TARGET = torch.tensor([[9,6,0]], dtype=torch.float32)
+NAV_SIM_CREATED = False
+
+
+def get_euler_xyz_tensor(quat):
+    r, p, w = get_euler_xyz(quat)
+    # stack r, p, w in dim1
+    euler_xyz = torch.stack((r, p, w), dim=1)
+    euler_xyz[euler_xyz > np.pi] -= 2 * np.pi
+    return euler_xyz
+
+class NavEnv(LeggedRobot):
     '''
     XBotLFreeEnv is a class that represents a custom environment for a legged robot.
 
@@ -76,16 +89,19 @@ class XBotLFreeEnv(LeggedRobot):
         compute_observations(): Computes the observations.
         reset_idx(env_ids): Resets the environment for the specified environment IDs.
     '''
-    def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
-        super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
-        self.last_feet_z = 0.05
-        self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
-        self.reset_idx(torch.tensor(range(self.num_envs), device=self.device))
-        self.compute_observations()
+    # def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
+    #     super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
+    #     self.last_feet_z = 0.05
+
+    #     self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
+    #     self.reset_idx(torch.tensor(range(self.num_envs), device=self.device))
+    #     self.compute_observations()
 
 
     def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
+        self.num_agents = 20 
         super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
+        self.nav_sim = create_nav_sim()
         self.last_feet_z = 0.05
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
         self.reset_idx(torch.tensor(range(self.num_envs), device=self.device))
@@ -153,7 +169,8 @@ class XBotLFreeEnv(LeggedRobot):
 
     def _create_obstacles(self, env, collision_group, num_obstacle=1, pos=[(1,1,1)],rand=False):
         #asset_root = os.path.join(LEGGED_GYM_ROOT_DIR, "isaacgym/assets")
-        asset_root = os.getcwd()
+        print("------------------------------OBS CREATED")
+        asset_root = os.path.join(os.getcwd(),"envs/navi")
         asset_file = "man.urdf"
         asset = self.gym.load_asset(self.sim, asset_root, asset_file, gymapi.AssetOptions())
         for i in range(num_obstacle):
@@ -264,6 +281,15 @@ class XBotLFreeEnv(LeggedRobot):
                 self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
 
 
+    def compute_heading(self, nav_target):
+        #TODO
+        #nav_target: Tensor in cart coords
+        #ISSUE : doesn't turn back
+        for i in range(self.num_envs):
+            heading = torch.atan((nav_target[i][1]- self.root_states[i][1]) / (nav_target[i][0] - self.root_states[i][0]))
+            #print("HEADING:" ,heading)
+        return heading
+
     def create_sim(self):
         """ Creates simulation, terrain and evironments
         """
@@ -309,6 +335,62 @@ class XBotLFreeEnv(LeggedRobot):
         noise_vec[41: 44] = noise_scales.ang_vel * self.obs_scales.ang_vel   # ang vel
         noise_vec[44: 47] = noise_scales.quat * self.obs_scales.quat         # euler x,y
         return noise_vec
+    
+    def _post_physics_step_callback(self,nav_target):
+        """ Callback called before computing terminations, rewards, and observations
+            Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
+        """
+        # 
+        env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
+        #self._resample_commands(env_ids)
+        self.commands[:,3] = self.compute_heading(nav_target) #filth prob the heading command
+        if self.cfg.commands.heading_command:
+            forward = quat_apply(self.base_quat, self.forward_vec)
+            heading = torch.atan2(forward[:, 1], forward[:, 0])
+            self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
+
+        if self.cfg.terrain.measure_heights:
+            self.measured_heights = self._get_heights()
+
+        if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
+            self._push_robots()
+
+    def post_physics_step(self,nav_target):
+        """ check terminations, compute observations and rewards
+            calls self._post_physics_step_callback() for common computations 
+            calls self._draw_debug_vis() if needed
+        """
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+
+        self.episode_length_buf += 1
+        self.common_step_counter += 1
+
+        # prepare quantities
+        self.base_quat[:] = self.root_states[:, 3:7]
+        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
+        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
+
+        self._post_physics_step_callback(nav_target)
+
+        # compute observations, rewards, resets, ...
+        self.check_termination()
+        self.compute_reward()
+        env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        self.reset_idx(env_ids)
+        self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
+
+        self.last_last_actions[:] = torch.clone(self.last_actions[:])
+        self.last_actions[:] = self.actions[:]
+        self.last_dof_vel[:] = self.dof_vel[:]
+        self.last_root_vel[:] = self.root_states[:, 7:13]
+        self.last_rigid_state[:] = self.rigid_state[:]
+
+        if self.viewer and self.enable_viewer_sync and self.debug_viz:
+            self._draw_debug_vis()
 
 
     def step(self, actions):
@@ -316,7 +398,46 @@ class XBotLFreeEnv(LeggedRobot):
             actions += self.ref_action
         delay = torch.rand((self.num_envs, 1), device=self.device)
         actions = (1 - delay) * actions + delay * self.actions
-        return super().step(actions)
+                
+        
+        clip_actions = self.cfg.normalization.clip_actions
+        self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+        # step physics and render each frame
+        self.render()
+        for _ in range(self.cfg.control.decimation):
+            self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+
+            self.gym.simulate(self.sim)
+            if self.device == 'cpu':
+                self.gym.fetch_results(self.sim, True)
+            self.gym.refresh_dof_state_tensor(self.sim)
+
+        set_nav_agent_pos(self.nav_sim, 0, self.root_states[:,0:2])
+        loc = compute_nav_sim(self.nav_sim)
+        nav_target = torch.tensor([[loc[0][0],loc[0][1]*1.05,0]], dtype=torch.float32)
+        self.post_physics_step(nav_target)
+
+        for i,l in enumerate(loc[1:]):
+            self.root_states_obstacle[:,i,0] = l[0]
+            self.root_states_obstacle[:,i,1] = l[1]
+        actor_ids = []
+        for i in [0]:
+            actor_ids+=[i*2,i*2+1]
+        #env_ids_int32 = env_ids.to(dtype=torch.int32)
+        # print('env_ids_int32',env_ids_int32)
+        actor_ids_int32 = torch.tensor(actor_ids,dtype=torch.int32,device=self.device)
+        # print('root_state_all_reset',self.root_states_all)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                     gymtorch.unwrap_tensor(self.root_states_all),
+                                                     gymtorch.unwrap_tensor(actor_ids_int32), len(actor_ids_int32))
+
+        # return clipped obs, clipped states (None), rewards, dones and infos
+        clip_obs = self.cfg.normalization.clip_observations
+        self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
+        if self.privileged_obs_buf is not None:
+            self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
+        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
 
 
     def compute_observations(self):
@@ -383,8 +504,75 @@ class XBotLFreeEnv(LeggedRobot):
         self.obs_buf = obs_buf_all.reshape(self.num_envs, -1)  # N, T*K
         self.privileged_obs_buf = torch.cat([self.critic_history[i] for i in range(self.cfg.env.c_frame_stack)], dim=1)
 
+    def _reset_root_states(self, env_ids):
+        """ Resets ROOT states position and velocities of selected environmments
+            Sets base position based on the curriculum
+            Selects randomized base velocities within -0.5:0.5 [m/s, rad/s]
+        Args:
+            env_ids (List[int]): Environemnt ids
+        """
+        # base position
+        if self.custom_origins:
+            self.root_states[env_ids] = self.base_init_state
+            self.root_states[env_ids, :3] += self.env_origins[env_ids]
+            self.root_states[env_ids, :2] += torch_rand_float(-4., 4., (len(env_ids), 2), device=self.device) # xy position within 1m of the center
+        else:
+            self.root_states[env_ids] = self.base_init_state
+            self.root_states[env_ids, :3] += self.env_origins[env_ids]
+        # base velocities
+        # self.root_states[env_ids, 7:13] = torch_rand_float(-0.01, 0.01, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
+        if self.cfg.asset.fix_base_link:
+            self.root_states[env_ids, 7:13] = 0
+            self.root_states[env_ids, 2] += 1.8
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                     gymtorch.unwrap_tensor(self.root_states_all),
+                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
     def reset_idx(self, env_ids):
-        super().reset_idx(env_ids)
+        if len(env_ids) == 0:
+            return
+        # update curriculum
+        if self.cfg.terrain.curriculum:
+            self._update_terrain_curriculum(env_ids)
+        # avoid updating command curriculum at each step since the maximum command is common to all envs
+        if self.cfg.commands.curriculum and (self.common_step_counter % self.max_episode_length==0):
+            self.update_command_curriculum(env_ids)
+        
+        # reset robot states
+        self._reset_dofs(env_ids)
+
+        self._reset_root_states(env_ids)
+
+        self._resample_commands(env_ids)
+
+        # reset buffers
+        self.last_last_actions[env_ids] = 0.
+        self.actions[env_ids] = 0.
+        self.last_actions[env_ids] = 0.
+        self.last_rigid_state[env_ids] = 0.
+        self.last_dof_vel[env_ids] = 0.
+        self.feet_air_time[env_ids] = 0.
+        self.episode_length_buf[env_ids] = 0
+        self.reset_buf[env_ids] = 1
+        # fill extras
+        self.extras["episode"] = {}
+        for key in self.episode_sums.keys():
+            self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
+            self.episode_sums[key][env_ids] = 0.
+        # log additional curriculum info
+        if self.cfg.terrain.mesh_type == "trimesh":
+            self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
+        if self.cfg.commands.curriculum:
+            self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
+        # send timeout info to the algorithm
+        if self.cfg.env.send_timeouts:
+            self.extras["time_outs"] = self.time_out_buf
+            
+        # fix reset gravity bug
+        self.base_quat[env_ids] = self.root_states[env_ids, 3:7]
+        self.base_euler_xyz = get_euler_xyz_tensor(self.base_quat)
+        self.projected_gravity[env_ids] = quat_rotate_inverse(self.base_quat[env_ids], self.gravity_vec[env_ids])
         for i in range(self.obs_history.maxlen):
             self.obs_history[i][env_ids] *= 0
         for i in range(self.critic_history.maxlen):

@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-import rvo2
+import humanoid.envs.navi.pedsim as pedsim
 import random
 import math
 import numpy as np
+import rvo2
 
 def create_nav_sim(scenario=3):
       sim = rvo2.PyRVOSimulator(1/50., 1.5, 7, 1.5, 2, 0.2, 2)
