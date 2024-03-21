@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-
-import humanoid.envs.navi.pedsim as pedsim
 import random
 import math
 import numpy as np
 import rvo2
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 def create_nav_sim(scenario=3):
       sim = rvo2.PyRVOSimulator(1/50., 1.5, 7, 1.5, 2, 0.2, 2)
@@ -114,10 +114,31 @@ def set_nav_agent_pos(sim,agent,pos):
 
 #print('Running simulation')
 
-#for step in range(20):
- #   sim.doStep()
-  #  print(sim.getAgentPosition(a0)[0])
-   # positions = ['(%5.3f, %5.3f)' % sim.getAgentPosition(agent_no)
-    #             for agent_no in (a0, a1, a2, a3)]
-    #print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '  '.join(positions)))
+
+if __name__ == "__main__":
+    sim = create_nav_sim(3)
+    posx = [ [] for i in range(20)]
+    posy = [ [] for i in range(20)]
+
+    for step in range(50*20):
+        sim.doStep()
+        for agent in range(20):
+            posx[agent].append(sim.getAgentPosition(agent)[0])
+            posy[agent].append(sim.getAgentPosition(agent)[1])
+    
+    fig, ax = plt.subplots()
+    lines = []
+    p, = ax.plot([posx[i][0] for i in range(20)],
+                 [posy[j][0] for j in range(20)], 'bo')
+    def animation_update(frame):
+        p.set_data([posx[i][frame] for i in range(20)],
+                   [posy[j][frame] for j in range(20)])
+               
+        return p,
+    ani = animation.FuncAnimation(fig=fig, func=animation_update,frames=50*20,interval=20)
+    plt.show()
+        #print(sim.getAgentPosition(0))
+        #positions = ['(%5.3f, %5.3f)' % sim.getAgentPosition(agent_no)
+        #for agent_no in (a0, a1, a2, a3)]:
+        #    print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '  '.join(positions)))
 

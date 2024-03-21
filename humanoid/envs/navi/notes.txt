@@ -1,3 +1,21 @@
 _resample_commands() legged_robot.py, potentially needed for RL? appears in various places
 rigid_states?
 num_agent = 19 or 20?
+terrain-height - for obs 
+ORCA frequency?
+
+TODO:
+    Experiments:
+        -Baseline ORCA (limit observation?)
+        -Baseline end-to-end training by reward tuning
+        -Abalation with HRL and Group
+
+    MUST:
+        -Human URDF
+        -Group Based Representation
+        -HRL framework
+        -Pedsim Visualization
+
+    Maybe:
+        -Replay data
+        -ORCA mod
