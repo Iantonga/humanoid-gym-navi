@@ -14,7 +14,7 @@ TODO:
         -Human URDF
         -Group Based Representation
         -HRL framework
-        -Pedsim Visualization
+        -Pedsim Visualization X
 
     Maybe:
         -Replay data

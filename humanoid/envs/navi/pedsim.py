@@ -6,7 +6,7 @@ import rvo2
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-from sklearn.cluster import DBSCAN
+from groups import extract_membership
 
 def create_nav_sim(scenario=3):
       sim = rvo2.PyRVOSimulator(1/50., 1.5, 7, 1.5, 2, 0.2, 2)
@@ -143,6 +143,8 @@ def animate_agents(posx,posy):
     num_agents = len(posx)
 
     fig, ax = plt.subplots()
+    ax.set_xlim((-10,10))
+    ax.set_ylim((-10,10))
     e, = ax.plot(posx[0][0],
                  posy[0][0], 'ro')
     p, = ax.plot([posx[i+1][0] for i in range(num_agents-1)],
@@ -168,10 +170,17 @@ if __name__ == "__main__":
 
     for step in range(50*20):
         sim.doStep()
+        pos_matrix = []
         for agent in range(num_agents):
-            posx[agent].append(sim.getAgentPosition(agent)[0])
-            posy[agent].append(sim.getAgentPosition(agent)[1])
+            aposx = sim.getAgentPosition(agent)[0]
+            aposy = sim.getAgentPosition(agent)[1]
+            posx[agent].append(aposx)
+            posy[agent].append(aposy)
+            pos_matrix.append([aposx,aposy])
+        membership = extract_membership(pos_matrix, 1)
     
+    #print(pos_matrix)
+    #extract_membership(pos_matrix)
     animate_agents(posx,posy)
 
         #print(sim.getAgentPosition(0))
