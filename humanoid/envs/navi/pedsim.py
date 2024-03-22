@@ -5,7 +5,7 @@ import numpy as np
 import rvo2
 
 
-from groups import extract_membership
+#from groups import extract_membership
 
 class PedestrianSimulator(object):
 
@@ -26,6 +26,12 @@ class PedestrianSimulator(object):
 
     def getNumAgents(self):
         return self.sim.getNumAgents()
+    
+    def getAgentPosition(self,a):
+        return self.sim.getAgentPosition(a)
+    
+    def getAgentVelocity(self,a):
+        return self.sim.getAgentVelocity(a)
 
     def add_group(self,grouplist,tightness=None):
         velocity = random.uniform(0.5,0.8)
@@ -46,9 +52,11 @@ class PedestrianSimulator(object):
     def step(self):
         self.sim.doStep()
         positions = []
+        velocities = []
         for agent in range(self.sim.getNumAgents()):
             positions.append(self.sim.getAgentPosition(agent))
-        return positions
+            velocities.append(self.sim.getAgentVelocity(agent))
+        return positions, velocities
 
     def set_nav_agent_pos(self,agent,pos):
         pos =(float(pos[0][0]), float(pos[0][1]))

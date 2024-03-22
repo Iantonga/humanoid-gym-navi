@@ -35,8 +35,8 @@ def visualize(scenario=1):
     posx = [ [] for i in range(num_agents)]
     posy = [ [] for i in range(num_agents)]
 
-    for step in range(50*20):
-        agentpos = sim.step()
+    for simstep in range(50*20):
+        agentpos,_ = sim.step()
         pos_matrix = []
         for i,pos in enumerate(agentpos):
             posx[i].append(pos[0])
