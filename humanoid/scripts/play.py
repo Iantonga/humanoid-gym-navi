@@ -44,6 +44,8 @@ import torch
 from tqdm import tqdm
 from datetime import datetime
 
+from visualization import animate_rollout
+
 
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
@@ -75,8 +77,9 @@ def play(args):
     # load policy
     train_cfg.runner.resume = True
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
-    policy = ppo_runner.get_inference_policy(device=env.device)
-    
+    #policy = ppo_runner.get_inference_policy(device=env.device)
+    policy = torch.jit.load("/home/ian/Desktop/humanoid-gym-navi/logs/XBot_ppo/exported/policies/policy_example.pt")
+    policy.to(env.device)
     # export policy as a jit module (used to run it from C++)
     if EXPORT_POLICY:
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
@@ -92,7 +95,7 @@ def play(args):
         camera_properties.width = 1920
         camera_properties.height = 1080
         h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
-        camera_offset = gymapi.Vec3(1, -1, 0.5)
+        camera_offset = gymapi.Vec3(2, -2, 2)
         camera_rotation = gymapi.Quat.from_axis_angle(gymapi.Vec3(-0.3, 0.2, 1),
                                                     np.deg2rad(135))
         actor_handle = env.gym.get_actor_handle(env.envs[0], 0)
@@ -122,7 +125,7 @@ def play(args):
             env.commands[:, 2] = 0.
             env.commands[:, 3] = 0.
 
-        obs, critic_obs, rews, dones, infos = env.step(actions.detach())
+        obs, critic_obs, rews, dones, infos, nav_rollout = env.step(actions.detach())
 
         if RENDER:
             env.gym.fetch_results(env.sim, True)
@@ -161,9 +164,12 @@ def play(args):
     if RENDER:
         video.release()
 
+    animate_rollout(nav_rollout)
+    
+
 if __name__ == '__main__':
     EXPORT_POLICY = False
     RENDER = True
-    FIX_COMMAND = True
+    FIX_COMMAND = False
     args = get_args()
     play(args)

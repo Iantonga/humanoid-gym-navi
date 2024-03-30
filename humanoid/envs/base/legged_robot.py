@@ -112,7 +112,7 @@ class LeggedRobot(BaseTask):
     def reset(self):
         """ Reset all robots"""
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
-        obs, privileged_obs, _, _, _ = self.step(torch.zeros(
+        obs, privileged_obs, _, _, _, _ = self.step(torch.zeros(
             self.num_envs, self.num_actions, device=self.device, requires_grad=False))
         return obs, privileged_obs
     

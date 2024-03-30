@@ -12,9 +12,69 @@ class PedestrianSimulator(object):
       # Class containing the simulator for pedestrians
      
     def __init__(self):
-        self.sim = rvo2.PyRVOSimulator(1/50., 1.5, 7, 1.5, 2, 0.2, 2)
+        self.sim = rvo2.PyRVOSimulator(1/60., 1.5, 5, 1.5, 2, 0.4, 2)
+        self.rollout = []
+        self.timestep = 0
+        self.replay = []
       
     def create_scenario(self, scenario=1):
+
+        if scenario == 4201:
+            a0 = self.sim.addAgent((0, 0))
+            self.sim.setAgentPrefVelocity(a0,(0.6,0))
+
+            g0 = self.sim.addAgent((2, 1))
+            g1 = self.sim.addAgent((1.5, 0))
+            g2 = self.sim.addAgent((1, -1))
+            self.sim.setAgentPrefVelocity(g0,(0.2,0))
+            self.sim.setAgentPrefVelocity(g1,(0.2,0))
+            self.sim.setAgentPrefVelocity(g2,(0.2,0))
+
+            o1 = self.sim.addObstacle([(-10,3),(10,3)])
+            o2 = self.sim.addObstacle([(-10,-3), (10,-3)])
+            self.sim.processObstacles()
+
+        if scenario == 69:
+            a0 = self.sim.addAgent((0, 0))
+            self.sim.setAgentPrefVelocity(a0,(1,0))
+
+            g0 = self.sim.addAgent((3, 1))
+            g1 = self.sim.addAgent((4, 0))
+            g2 = self.sim.addAgent((3.5, -1))
+            self.sim.setAgentPrefVelocity(g0,(-1,0.1))
+            self.sim.setAgentPrefVelocity(g1,(-1,0.1))
+            self.sim.setAgentPrefVelocity(g2,(-1,0.1))
+
+
+
+
+        if scenario == 100:
+            a0 = self.sim.addAgent((0, 0))
+            a1 = self.sim.addAgent((1, 0))
+            #a2 = self.sim.addAgent((1, 1))
+            #a3 = self.sim.addAgent((0, 1), 1.5, 5, 1.5, 2, 0.4, 2, (0, 0))
+
+            # Obstacles are also supported.
+            #o1 = self.sim.addObstacle([(0.1, 0.1), (-0.1, 0.1), (-0.1, -0.1)])
+            #self.sim.processObstacles()
+
+            self.sim.setAgentPrefVelocity(a0, (1, 0))
+            self.sim.setAgentPrefVelocity(a1, (-1, 0))
+            #self.sim.setAgentPrefVelocity(a2, (-1, -1))
+            #self.sim.setAgentPrefVelocity(a3, (1, -1))
+
+        if scenario == 0:
+            a0 = self.sim.addAgent((0,-1))
+            self.sim.setAgentPrefVelocity(a0, (0.1,5))
+            self.sim.setAgentNeighborDist(a0, 10)
+            self.sim.setAgentMaxNeighbors(a0, 10)
+            self.sim.setAgentRadius(a0,0.2)
+            self.sim.setAgentTimeHorizon(a0,1.5)
+            o1 = self.sim.addObstacle([(-1, 1), (1, 1), (1, 2),(-1,2)])
+            self.sim.processObstacles()
+
+            self.sim.setAgentTimeHorizonObst(0, 10) 	
+
         if scenario == 1:
             a0 = self.sim.addAgent((0,0))
             self.sim.setAgentPrefVelocity(a0, (1,0))
@@ -23,6 +83,36 @@ class PedestrianSimulator(object):
             self.sim.setAgentRadius(a0,0.2)
             self.sim.setAgentTimeHorizon(a0,10)
             self.add_group([((3,-3),3),((3,3),2)])
+
+        if scenario == 3:
+          a0 = self.sim.addAgent((0,0))
+          direction = [1,-1]
+          for a in range (19):
+               # if sim.getAgentPosition(a+1)[0] >= 0:
+                   #   x = random.uniform(-1,-0.5)
+                #else:
+                  #    x = random.uniform(0.5,1)
+                #if sim.getAgentPosition(a+1)[1] >= 0:
+                 #     y = random.uniform(-1.1, -0.6)
+                #else:
+                #      y = random.uniform(0.6,1.1)
+                velocity = random.uniform(0,0.3)
+                #y = math.sqrt(abs( velocity**2 - x**2)) * direction[random.randint(0,1)]
+                self.sim.addAgent((random.randint(5,15), random.randint(-9,6)))
+                x = random.uniform(0,0.3) * (-np.sign(self.sim.getAgentPosition(a+1)[0]))
+                y = math.sqrt(abs( velocity**2 - x**2)) * (-np.sign(self.sim.getAgentPosition(a+1)[1]))
+
+                #sim.setAgentPrefVelocity(a+1, (x,y))
+                self.sim.setAgentPrefVelocity(a+1, (x,y))
+                #self.sim.setAgentPrefVelocity(a+1, (0,0))
+                self.sim.setAgentRadius(a+1,0.5)
+                #sim.setAgentTimeHorizon(a+1,5)
+        
+          self.sim.setAgentPrefVelocity(a0, (1,0))
+          self.sim.setAgentNeighborDist(a0, 15)
+          self.sim.setAgentMaxNeighbors(a0, 10)
+          self.sim.setAgentRadius(a0,0.5)
+          self.sim.setAgentTimeHorizon(a0,15)
 
     def getNumAgents(self):
         return self.sim.getNumAgents()
@@ -49,13 +139,20 @@ class PedestrianSimulator(object):
                 self.sim.setAgentRadius(aidx,0.3)
                 aidx += 1
     
-    def step(self):
-        self.sim.doStep()
-        positions = []
-        velocities = []
-        for agent in range(self.sim.getNumAgents()):
-            positions.append(self.sim.getAgentPosition(agent))
-            velocities.append(self.sim.getAgentVelocity(agent))
+    def step(self, replay=False):
+        if not replay:
+            self.sim.doStep()
+            positions = []
+            velocities = []
+            for agent in range(self.sim.getNumAgents()):
+                positions.append(self.sim.getAgentPosition(agent))
+                velocities.append(self.sim.getAgentVelocity(agent))
+            self.rollout.append(positions)
+            #print(self.sim.getAgentVelocity(0))
+
+        else:
+            out = self.replay[self.timestep]
+            self.timestep += 1
         return positions, velocities
 
     def set_nav_agent_pos(self,agent,pos):

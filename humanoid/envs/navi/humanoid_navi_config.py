@@ -163,7 +163,7 @@ class NaviCfg(LeggedRobotCfg):
         # Vers: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         num_commands = 4
         resampling_time = 8.  # time before command are changed[s]
-        heading_command = True  # if true: compute ang vel command from heading error
+        heading_command = False  # if true: compute ang vel command from heading error
 
         class ranges:
             lin_vel_x = [-0.3, 0.6] # min max [m/s] 

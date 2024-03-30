@@ -37,7 +37,7 @@ from humanoid.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_floa
 import torch
 import os
 from humanoid.envs import LeggedRobot
-from humanoid.envs.navi.pedsim import create_nav_sim, compute_nav_sim, set_nav_agent_pos
+from humanoid.envs.navi.pedsim import PedestrianSimulator as pedsim
 
 
 from humanoid.utils.terrain import  HumanoidTerrain
@@ -99,9 +99,11 @@ class NavEnv(LeggedRobot):
 
 
     def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
-        self.num_agents = 20 
+        self.nav_sim = pedsim()
+        self.nav_sim.create_scenario(4201)
+        self.num_walls = 2
+        self.num_agents = self.nav_sim.getNumAgents() + self.num_walls
         super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
-        self.nav_sim = create_nav_sim()
         self.last_feet_z = 0.05
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
         self.reset_idx(torch.tensor(range(self.num_envs), device=self.device))
@@ -167,12 +169,33 @@ class NavEnv(LeggedRobot):
 
         self.ref_action = 2 * self.ref_dof_pos
 
+    def _create_walls(self,env,collision_group,scenario=0):
+        asset_root = os.path.join(os.getcwd(),"envs/navi")
+        asset_file = "wall.urdf"
+        asset = self.gym.load_asset(self.sim, asset_root, asset_file, gymapi.AssetOptions())
+        pose = gymapi.Transform()
+        if scenario == 0:
+            pose.r = gymapi.Quat(0,0,0,1)
+            pose.p = gymapi.Vec3(0,3,0.1)
+            ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
+            self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.5,0.5))
+
+            pose.r = gymapi.Quat(0,0,0,1)
+            pose.p = gymapi.Vec3(0,-3,0.1)
+            ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
+            self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.5,0.5))
+        
+
+
+
+
     def _create_obstacles(self, env, collision_group, num_obstacle=1, pos=[(1,1,1)],rand=False):
         #asset_root = os.path.join(LEGGED_GYM_ROOT_DIR, "isaacgym/assets")
-        print("------------------------------OBS CREATED")
+        num_obstacle = num_obstacle - self.num_walls - 1
         asset_root = os.path.join(os.getcwd(),"envs/navi")
         asset_file = "man.urdf"
         asset = self.gym.load_asset(self.sim, asset_root, asset_file, gymapi.AssetOptions())
+
         for i in range(num_obstacle):
             pose = gymapi.Transform()
             pose.r = gymapi.Quat(0,0,0,1)
@@ -183,6 +206,8 @@ class NavEnv(LeggedRobot):
             ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
 
             self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.6,0.7))
+
+        self._create_walls(env,collision_group)
 
     def _create_envs(self):
             """ Creates environments:
@@ -263,7 +288,7 @@ class NavEnv(LeggedRobot):
                 self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
                 self.envs.append(env_handle)
                 self.actor_handles.append(actor_handle)
-                self._create_obstacles(env_handle, i, 19, [(2,0,0)],rand=True)
+                self._create_obstacles(env_handle, i, self.num_agents, [(2,0,0)],rand=True)
 
             self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
             for i in range(len(feet_names)):
@@ -343,8 +368,13 @@ class NavEnv(LeggedRobot):
         # 
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
         #self._resample_commands(env_ids)
-        self.commands[:,3] = self.compute_heading(nav_target) #filth prob the heading command
+        self.commands[:,3] = 0 #self.compute_heading(nav_target) #filth prob the heading command
+        self.commands[:,0] = 1.2
+        self.commands[:,1] = 0.5
         if self.cfg.commands.heading_command:
+            print("NOSIR")
+            #nav_heading = self.compute_heading(nav_target)
+            #print(self.forward_vec, nav_heading)
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
             self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
@@ -413,9 +443,9 @@ class NavEnv(LeggedRobot):
                 self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
 
-        set_nav_agent_pos(self.nav_sim, 0, self.root_states[:,0:2])
-        loc = compute_nav_sim(self.nav_sim)
-        nav_target = torch.tensor([[loc[0][0],loc[0][1]*1.05,0]], dtype=torch.float32)
+        self.nav_sim.set_nav_agent_pos(0, self.root_states[:,0:2])
+        loc,_ = self.nav_sim.step()
+        nav_target = torch.tensor([[loc[0][0]*1.5,loc[0][1]*1.5,0]], dtype=torch.float32)
         self.post_physics_step(nav_target)
 
         for i,l in enumerate(loc[1:]):
@@ -437,7 +467,7 @@ class NavEnv(LeggedRobot):
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, self.nav_sim.rollout
 
 
     def compute_observations(self):

@@ -3,7 +3,7 @@ import matplotlib.animation as animation
 import numpy as np
 from pedsim import PedestrianSimulator as pedsim
 
-def animate_agents(posx,posy):
+def animate_agents(posx,posy,save):
     assert len(posx) == len(posy), "Coordinate size mismatch"
     num_agents = len(posx)
 
@@ -19,24 +19,30 @@ def animate_agents(posx,posy):
                    [posy[j+1][frame] for j in range(num_agents-1)])
         e.set_data(posx[0][frame],
                    posy[0][frame])
-               
-        return p,
-    ani = animation.FuncAnimation(fig=fig, func=animation_update,frames=50*20,interval=20)
-    plt.show()
+        
+    ani = animation.FuncAnimation(fig=fig, func=animation_update,frames=60*10,interval=1/60)
+    if save:
+        writer = animation.PillowWriter(fps=60,
+                                 metadata=dict(artist='Me'),
+                                 bitrate=1800)
+        print("Saving pedsim gif...")
+        ani.save('pedsim.gif', writer=writer)
+        print("Complete")
+    else:
+        plt.show()
 
 
-def visualize(scenario=1):
+def visualize(scenario=1, save=False):
     sim = pedsim()
     sim.create_scenario(scenario)
     #add_group(sim, (3,3),3)
     #sim.add_group([((3,-3),3),((3,3),2)])
     num_agents = sim.getNumAgents()
-    print(num_agents)
     posx = [ [] for i in range(num_agents)]
     posy = [ [] for i in range(num_agents)]
 
-    for simstep in range(50*20):
-        agentpos,_ = sim.step()
+    for simstep in range(60*10):
+        agentpos,agentvel = sim.step()
         pos_matrix = []
         for i,pos in enumerate(agentpos):
             posx[i].append(pos[0])
@@ -45,9 +51,21 @@ def visualize(scenario=1):
         #membership = extract_membership(pos_matrix, 1)
     #print(pos_matrix)
     #extract_membership(pos_matrix)
-    animate_agents(posx,posy)
+    animate_agents(posx,posy,save)
+
+def animate_rollout(rollout):
+    frames = len(rollout)
+    num_agents = len(rollout[0])
+    posx = [ [] for i in range(num_agents)]
+    posy = [ [] for i in range(num_agents)]
+    for f in range(frames):
+        for i,agentpos in enumerate(rollout[f]):
+            posx[i].append(agentpos[0])
+            posy[i].append(agentpos[1])
+    animate_agents(posx,posy,False)
+
 
 
 if __name__ == "__main__":
-    scenario = 1
-    visualize(scenario)
+    scenario = 4201
+    visualize(scenario,False)

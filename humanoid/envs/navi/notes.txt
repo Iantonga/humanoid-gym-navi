@@ -9,6 +9,7 @@ TODO:
         -Baseline ORCA (limit observation?)
         -Baseline end-to-end training by reward tuning
         -Abalation with HRL and Group
+        -ped comfort, deviation amount score
 
     MUST:
         -Human URDF
@@ -19,3 +20,14 @@ TODO:
     Maybe:
         -Replay data
         -ORCA mod
+
+    
+
+Thesis Must-haves visuals:
+- ped to group figure
+- path around group figure 
+- 
+
+
+
+

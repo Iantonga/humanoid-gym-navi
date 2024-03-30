@@ -161,34 +161,41 @@ class SocialGroup(object):
                 contour_points.append((x, y))
 
         # Get the convex hull of all the personal spaces
-        convex_hull_vertices = []
+        # convex_hull_vertices = []
         hull = ConvexHull(np.array(contour_points))
+        x , y = [], []
         for i in hull.vertices:
-            hull_vertice = (contour_points[i][0], contour_points[i][1])
-            convex_hull_vertices.append(hull_vertice)
+            #hull_vertice = (contour_points[i][0], contour_points[i][1])
+            #convex_hull_vertices.append(hull_vertice)
+            x.append(contour_points[i][0])
+            y.append(contour_points[i][1])
 
-        return convex_hull_vertices
+        return x,y
     
 
 if __name__ =="__main__":
     sim = pedsim()
     sim.create_scenario(1)
     positions, velocities = sim.step()
-    group1pos = positions[4:]
-    groups = SocialGroup(group1pos,velocities)
-    convex_vert = groups.draw_social_shapes()
+    group1pos = positions[1:4]
+    group1vel = velocities[1:4]
+    groups = SocialGroup(group1pos,group1vel)
+    x,y = groups.draw_social_shapes()
     xa = []
     ya = []
-    x = []
-    y = []
+    #x = []
+    #y = []
     for a in positions:
         xa.append(a[0])
         ya.append(a[1])
-    for v in convex_vert:
-        x.append(v[0])
-        y.append(v[1])
+    #for v in convex_vert:
+    #    x.append(v[0])
+    #    y.append(v[1])
+
+    x.append(x[0])
+    y.append(y[0])
     #print(sim.getNumAgents(), len(convex_vert))
-    plt.scatter(x,y)
+    plt.plot(x,y)
     plt.scatter(xa,ya)
     plt.show()
 
