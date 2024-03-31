@@ -100,9 +100,13 @@ class NavEnv(LeggedRobot):
 
     def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
         self.nav_sim = pedsim()
-        self.nav_sim.create_scenario(4201)
+        self.nav_sim.create_scenario(691)
         self.num_walls = 2
         self.num_agents = self.nav_sim.getNumAgents() + self.num_walls
+        apos = []
+        for i in range(self.nav_sim.getNumAgents()):
+            apos.append(self.nav_sim.getAgentPosition(i))
+        print(apos)
         super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
         self.last_feet_z = 0.05
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
@@ -207,7 +211,7 @@ class NavEnv(LeggedRobot):
 
             self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.6,0.7))
 
-        self._create_walls(env,collision_group)
+        self._create_walls(env,collision_group,scenario=0)
 
     def _create_envs(self):
             """ Creates environments:
@@ -368,16 +372,20 @@ class NavEnv(LeggedRobot):
         # 
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
         #self._resample_commands(env_ids)
-        self.commands[:,3] = 0 #self.compute_heading(nav_target) #filth prob the heading command
-        self.commands[:,0] = 1.2
-        self.commands[:,1] = 0.5
+        self.commands[:,3] = self.compute_heading(nav_target) * 2.2
+        ego_velx = self.nav_sim.getAgentVelocity(0)[0]
+        ego_vely = self.nav_sim.getAgentVelocity(0)[1]
+        vel = abs(ego_velx ** 2 + ego_vely ** 2)
+        self.commands[:,0] = vel
+        #print("Pref: ", self.nav_sim.getAgentPrefVelocity(0), "Actual: ", ego_velx, ego_vely)
+
+        #print("COMPUTED HEADING: ", self.compute_heading(nav_target))
         if self.cfg.commands.heading_command:
-            print("NOSIR")
-            #nav_heading = self.compute_heading(nav_target)
-            #print(self.forward_vec, nav_heading)
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
             self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
+            #print("HEADING: ", self.commands[:,3])
+
 
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
@@ -445,7 +453,8 @@ class NavEnv(LeggedRobot):
 
         self.nav_sim.set_nav_agent_pos(0, self.root_states[:,0:2])
         loc,_ = self.nav_sim.step()
-        nav_target = torch.tensor([[loc[0][0]*1.5,loc[0][1]*1.5,0]], dtype=torch.float32)
+        nav_target = torch.tensor([[loc[0][0],loc[0][1],0]], dtype=torch.float32)
+        #nav_target = torch.tensor([[ego_vel[0],ego_vel[1]]], dtype=torch.float32)
         self.post_physics_step(nav_target)
 
         for i,l in enumerate(loc[1:]):
@@ -563,6 +572,7 @@ class NavEnv(LeggedRobot):
         if len(env_ids) == 0:
             return
         # update curriculum
+        #print("----ENV RESET----")
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
         # avoid updating command curriculum at each step since the maximum command is common to all envs

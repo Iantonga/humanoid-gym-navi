@@ -67,5 +67,5 @@ def animate_rollout(rollout):
 
 
 if __name__ == "__main__":
-    scenario = 4201
+    scenario = 691
     visualize(scenario,False)
