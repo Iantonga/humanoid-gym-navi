@@ -12,48 +12,74 @@ class PedestrianSimulator(object):
       # Class containing the simulator for pedestrians
      
     def __init__(self):
-        self.sim = rvo2.PyRVOSimulator(1/60., 1.5, 7, 1.5, 2, 0.3, 1.2)
+        # Sim params:                  timestep, nbdist, maxnb, horizon, horizonobs, radius,maxspeed
+        self.sim = rvo2.PyRVOSimulator(1/60.,    1.5,    7,     1.5,     2,          0.3,   1.2)
         self.rollout = []
         self.timestep = 0
         self.replay = []
+        self.num_walls = 0
         random.seed(42069)
+
+    def get_num_walls(self):
+        return self.num_walls
       
     def create_scenario(self, scenario=1):
         # Scenarios:
-        # 691: Corridor, opposite ped traffic
-
+        # 691: Corridor-wide, opposite ped traffic
+        # 692: Corridor-narrow, oppsite ped traffic
 
         if scenario == 691:
             a0 = self.sim.addAgent((0, 0))
             self.sim.setAgentPrefVelocity(a0,(1,0))
-            reg = 12
-            fast = 10
+            reg = 10
+            fast = 18
+            #interval = 20 / (reg + fast)
             for i in range(reg):
-                self.sim.addAgent((random.uniform(0,8),random.uniform(-1,1)))
-                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.3,0.42),0))
-            for i in range(reg):
-                self.sim.addAgent((random.uniform(-8,0),random.uniform(-1,1)))
-                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.3,0.42),0))
+                self.sim.addAgent((random.uniform((20/reg) * i - 11, (20/reg) * i - 9),random.uniform(-2,2)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.3,0.6),random.uniform(-0.1,0.1)))
             for i in range(fast):
-                self.sim.addAgent((random.uniform(-8,8),random.uniform(-1,1)))
-                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.4,0.6),0))
+                self.sim.addAgent((random.uniform((20/fast) * i - 11, (20/fast) * i - 9),random.uniform(-2,2)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.4,0.6),random.uniform(-0.1,0.1)))
 
             for i in range(reg):
-                self.sim.addAgent((random.uniform(0,8),random.uniform(-1,-2)))
-                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.3,-0.42),0))
-            for i in range(reg):
-                self.sim.addAgent((random.uniform(-8,0),random.uniform(-1,-2)))
-                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.3,-0.42),0))
+                self.sim.addAgent((random.uniform((20/reg) * i - 11, (20/reg) * i - 9),random.uniform(-6, -2)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.3,-0.6),random.uniform(-0.1,0.1)))
             for i in range(fast):
-                self.sim.addAgent((random.uniform(-8,8),random.uniform(-1,-2)))
-                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.4,-0.6),0))
+                self.sim.addAgent((random.uniform((20/fast) * i - 11, (20/fast) * i - 9),random.uniform(-6,-2)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.4,-0.6),random.uniform(-0.1,0.1)))
             
             
-            o1 = self.sim.addObstacle([(-10,3),(10,3)])
-            o2 = self.sim.addObstacle([(-10,-3), (10,-3)])
+            o1 = self.sim.addObstacle([(-20,3),(20,3)])
+            o2 = self.sim.addObstacle([(-20,-7), (20,-7)])
             self.sim.processObstacles()
             
-        
+        if scenario == 692:
+            self.num_walls = 2
+            a0 = self.sim.addAgent((0, 0))
+            self.sim.setAgentPrefVelocity(a0,(1,0))
+            reg = 10
+            fast = 18
+            #interval = 20 / (reg + fast)
+            for i in range(reg):
+                self.sim.addAgent((random.uniform((40/reg) * i - 21, (40/reg) * i - 19),random.uniform(-1,1.5)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.3,0.6),random.uniform(0,0.1)))
+            for i in range(fast):
+                self.sim.addAgent((random.uniform((40/fast) * i - 21, (40/fast) * i - 19),random.uniform(-1,1)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(0.4,0.6),random.uniform(0,0.1)))
+
+            for i in range(reg):
+                self.sim.addAgent((random.uniform((40/reg) * i - 21, (40/reg) * i - 19),random.uniform(-3, -1.5)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.3,-0.6),random.uniform(-0.1,0)))
+            for i in range(fast):
+                self.sim.addAgent((random.uniform((40/fast) * i - 21, (40/fast) * i - 19),random.uniform(-3,-1.5)))
+                self.sim.setAgentPrefVelocity(self.sim.getNumAgents()-1, (random.uniform(-0.4,-0.6),random.uniform(-0.1,0)))
+            
+            
+            o1 = self.sim.addObstacle([(-20,2),(20,2)])
+            o2 = self.sim.addObstacle([(-20,-4), (20,-4)])
+            self.sim.processObstacles()
+ 
+
 
 
         if scenario == 690:
@@ -80,9 +106,9 @@ class PedestrianSimulator(object):
             a0 = self.sim.addAgent((0, 0))
             self.sim.setAgentPrefVelocity(a0,(1,0))
 
-            g0 = self.sim.addAgent((3, 1))
-            g1 = self.sim.addAgent((4, 0))
-            g2 = self.sim.addAgent((3.5, -1))
+            g0 = self.sim.addAgent((10, 1))
+            g1 = self.sim.addAgent((12, 0))
+            g2 = self.sim.addAgent((11, -1))
             self.sim.setAgentPrefVelocity(g0,(-1,0.1))
             self.sim.setAgentPrefVelocity(g1,(-1,0.1))
             self.sim.setAgentPrefVelocity(g2,(-1,0.1))
@@ -129,7 +155,7 @@ class PedestrianSimulator(object):
         if scenario == 3:
           a0 = self.sim.addAgent((0,0))
           direction = [1,-1]
-          for a in range (19):
+          for a in range (15):
                # if sim.getAgentPosition(a+1)[0] >= 0:
                    #   x = random.uniform(-1,-0.5)
                 #else:
@@ -140,7 +166,7 @@ class PedestrianSimulator(object):
                 #      y = random.uniform(0.6,1.1)
                 velocity = random.uniform(0,0.3)
                 #y = math.sqrt(abs( velocity**2 - x**2)) * direction[random.randint(0,1)]
-                self.sim.addAgent((random.randint(5,15), random.randint(-9,6)))
+                self.sim.addAgent((random.randint(2,13), random.randint(-9,6)))
                 x = random.uniform(0,0.5) * (-np.sign(self.sim.getAgentPosition(a+1)[0]))
                 y = math.sqrt(abs( velocity**2 - x**2)) * (-np.sign(self.sim.getAgentPosition(a+1)[1]))
 
@@ -151,10 +177,10 @@ class PedestrianSimulator(object):
                 #sim.setAgentTimeHorizon(a+1,5)
         
           self.sim.setAgentPrefVelocity(a0, (1,0))
-          self.sim.setAgentNeighborDist(a0, 10)
+          self.sim.setAgentNeighborDist(a0, 15)
           self.sim.setAgentMaxNeighbors(a0, 10)
-          self.sim.setAgentRadius(a0,0.2)
-          self.sim.setAgentTimeHorizon(a0,10)
+          self.sim.setAgentRadius(a0,0.3)
+          self.sim.setAgentTimeHorizon(a0,15)
 
     def getNumAgents(self):
         return self.sim.getNumAgents()
@@ -203,101 +229,4 @@ class PedestrianSimulator(object):
     def set_nav_agent_pos(self,agent,pos):
         pos =(float(pos[0][0]), float(pos[0][1]))
         self.sim.setAgentPosition(agent,pos)
-
-
-
-        #print(sim.getAgentPosition(0))
-        #positions = ['(%5.3f, %5.3f)' % sim.getAgentPosition(agent_no)
-        #for agent_no in (a0, a1, a2, a3)]:
-        #    print('step=%2i  t=%.3f  %s' % (step, sim.getGlobalTime(), '  '.join(positions)))
-    
-
-
-
-#print('Simulation has %i agents and %i obstacle vertices in it.' %
- #     (sim.getNumAgents(), sim.getNumObstacleVertices()))
-
-#print('Running simulation')
-
-
-    # Pass either just the position (the other parameters then use
-# the default values passed to the PyRVOSimulator constructor),
-# or pass all available parameters.
-# Obstacles are also supported.
-#     o1 = sim.addObstacle([(0.1, 0.1), (-0.1, 0.1), (-0.1, -0.1)])
-#      sim.processObstacles()
-      # if scenario == 0:
-      #       a0 = sim.addAgent((0,0))
-      #       a1 = sim.addAgent((2, 2))
-      #       a2 = sim.addAgent((2.5, 2.5))
-      #       a3 = sim.addAgent((3, -3))
-      #       a4 = sim.addAgent((3.5, -3.5))
-      #       a5 = sim.addAgent((4.5, 7.5))
-      #       a6 = sim.addAgent((5, 8))
-      #       sim.setAgentPrefVelocity(a1, (0, -1))
-      #       sim.setAgentPrefVelocity(a2, (0, -1))
-      #       sim.setAgentPrefVelocity(a3, (0, 1))
-      #       sim.setAgentPrefVelocity(a4, (0, 1))
-      #       sim.setAgentPrefVelocity(a5, (0, -1))
-      #       sim.setAgentPrefVelocity(a6, (0, -1))
-
-      #       sim.setAgentPrefVelocity(a0, (1,0))
-      #       sim.setAgentNeighborDist(a0, 5)
-      #       sim.setAgentRadius(a0,0.25)
-      #       sim.setAgentTimeHorizon(a0,3.5)
-
-      # if scenario == 1:
-      #       a0 = sim.addAgent((0,0))
-      #       a1 = sim.addAgent((6, 0))
-      #       #a2 = sim.addAgent((6.5, 0.3))
-      #       sim.setAgentPrefVelocity(a1, (-1, 0))
-      #       sim.setAgentMaxNeighbors(a1,0)
-      #       #sim.setAgentPrefVelocity(a2, (-1, 0))
-            
-      #       sim.setAgentPrefVelocity(a0, (1,0))
-      #       sim.setAgentNeighborDist(a0, 10)
-      #       sim.setAgentRadius(a0,0.3)
-      #       sim.setAgentTimeHorizon(a0,10)
-
-      # if scenario == 2:
-      #       a0 = sim.addAgent((0,0))
-      #       a1 = sim.addAgent((2, 0))
-      #       #a2 = sim.addAgent((6.5, 0.3))
-      #       sim.setAgentPrefVelocity(a1, (0.5, 0))
-      #       sim.setAgentMaxNeighbors(a1,0)
-      #       #sim.setAgentPrefVelocity(a2, (-1, 0))
-            
-      #       sim.setAgentPrefVelocity(a0, (1,0))
-      #       sim.setAgentNeighborDist(a0, 10)
-      #       sim.setAgentRadius(a0,0.3)
-      #       sim.setAgentTimeHorizon(a0,10)
-
-      # if scenario == 3:
-      #       a0 = sim.addAgent((0,0))
-      #       direction = [1,-1]
-      #       for a in range (19):
-      #            # if sim.getAgentPosition(a+1)[0] >= 0:
-      #                #   x = random.uniform(-1,-0.5)
-      #             #else:
-      #               #    x = random.uniform(0.5,1)
-      #             #if sim.getAgentPosition(a+1)[1] >= 0:
-      #              #     y = random.uniform(-1.1, -0.6)
-      #             #else:
-      #             #      y = random.uniform(0.6,1.1)
-      #             velocity = random.uniform(0.5,0.8)
-      #             #y = math.sqrt(abs( velocity**2 - x**2)) * direction[random.randint(0,1)]
-      #             sim.addAgent((random.randint(5,15), random.randint(-9,6)))
-      #             x = random.uniform(0,0.8) * (-np.sign(sim.getAgentPosition(a+1)[0]))
-      #             y = math.sqrt(abs( velocity**2 - x**2)) * (-np.sign(sim.getAgentPosition(a+1)[1]))
-
-      #             #sim.setAgentPrefVelocity(a+1, (x,y))
-      #             sim.setAgentPrefVelocity(a+1, (x,y))
-      #             sim.setAgentRadius(a+1,0.3)
-      #             #sim.setAgentTimeHorizon(a+1,5)
-            
-      #       sim.setAgentPrefVelocity(a0, (1,0))
-      #       sim.setAgentNeighborDist(a0, 10)
-      #       sim.setAgentMaxNeighbors(a0, 10)
-      #       sim.setAgentRadius(a0,0.2)
-      #       sim.setAgentTimeHorizon(a0,10)
 

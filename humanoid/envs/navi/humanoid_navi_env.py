@@ -35,6 +35,7 @@ from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi
 from humanoid.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 import torch
+import math
 import os
 from humanoid.envs import LeggedRobot
 from humanoid.envs.navi.pedsim import PedestrianSimulator as pedsim
@@ -47,6 +48,24 @@ from humanoid.utils.terrain import  HumanoidTerrain
 NAV_TARGET = torch.tensor([[9,6,0]], dtype=torch.float32)
 NAV_SIM_CREATED = False
 
+def get_quaternion_from_euler(roll, pitch, yaw):
+  """
+  Convert an Euler angle to a quaternion.
+   
+  Input
+    :param roll: The roll (rotation around x-axis) angle in radians.
+    :param pitch: The pitch (rotation around y-axis) angle in radians.
+    :param yaw: The yaw (rotation around z-axis) angle in radians.
+ 
+  Output
+    :return qx, qy, qz, qw: The orientation in quaternion [x,y,z,w] format
+  """
+  qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+  qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
+  qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
+  qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+ 
+  return [qx, qy, qz, qw]
 
 def get_euler_xyz_tensor(quat):
     r, p, w = get_euler_xyz(quat)
@@ -100,19 +119,18 @@ class NavEnv(LeggedRobot):
 
     def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
         self.nav_sim = pedsim()
-        self.nav_sim.create_scenario(691)
-        self.num_walls = 2
-        self.num_agents = self.nav_sim.getNumAgents() + self.num_walls
-        apos = []
-        for i in range(self.nav_sim.getNumAgents()):
-            apos.append(self.nav_sim.getAgentPosition(i))
-        print(apos)
+        self.scenario = 692
+        self.nav_sim.create_scenario(self.scenario)
+        self.num_agents = self.nav_sim.getNumAgents() + self.nav_sim.num_walls
         super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
         self.last_feet_z = 0.05
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
         self.reset_idx(torch.tensor(range(self.num_envs), device=self.device))
         self.compute_observations()
 
+    def get_scenario(self):
+        return self.scenario
+    
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
         """
@@ -178,14 +196,25 @@ class NavEnv(LeggedRobot):
         asset_file = "wall.urdf"
         asset = self.gym.load_asset(self.sim, asset_root, asset_file, gymapi.AssetOptions())
         pose = gymapi.Transform()
-        if scenario == 0:
+        if scenario == 691:
             pose.r = gymapi.Quat(0,0,0,1)
             pose.p = gymapi.Vec3(0,3,0.1)
             ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
             self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.5,0.5))
 
             pose.r = gymapi.Quat(0,0,0,1)
-            pose.p = gymapi.Vec3(0,-3,0.1)
+            pose.p = gymapi.Vec3(0,-7,0.1)
+            ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
+            self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.5,0.5))
+        
+        if scenario == 692:
+            pose.r = gymapi.Quat(0,0,0,1)
+            pose.p = gymapi.Vec3(0,2.25,0.1)
+            ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
+            self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.5,0.5))
+
+            pose.r = gymapi.Quat(0,0,0,1)
+            pose.p = gymapi.Vec3(0,-4.25,0.1)
             ahandle = self.gym.create_actor(env, asset, pose, None, collision_group, 0)
             self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.5,0.5))
         
@@ -195,7 +224,7 @@ class NavEnv(LeggedRobot):
 
     def _create_obstacles(self, env, collision_group, num_obstacle=1, pos=[(1,1,1)],rand=False):
         #asset_root = os.path.join(LEGGED_GYM_ROOT_DIR, "isaacgym/assets")
-        num_obstacle = num_obstacle - self.num_walls - 1
+        num_obstacle = num_obstacle - self.nav_sim.num_walls - 1
         asset_root = os.path.join(os.getcwd(),"envs/navi")
         asset_file = "man.urdf"
         asset = self.gym.load_asset(self.sim, asset_root, asset_file, gymapi.AssetOptions())
@@ -211,7 +240,7 @@ class NavEnv(LeggedRobot):
 
             self.gym.set_rigid_body_color(env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.5,0.6,0.7))
 
-        self._create_walls(env,collision_group,scenario=0)
+        self._create_walls(env,collision_group,self.scenario)
 
     def _create_envs(self):
             """ Creates environments:
@@ -452,14 +481,26 @@ class NavEnv(LeggedRobot):
             self.gym.refresh_dof_state_tensor(self.sim)
 
         self.nav_sim.set_nav_agent_pos(0, self.root_states[:,0:2])
-        loc,_ = self.nav_sim.step()
+        loc,vel = self.nav_sim.step()
+        #print(vel)
         nav_target = torch.tensor([[loc[0][0],loc[0][1],0]], dtype=torch.float32)
         #nav_target = torch.tensor([[ego_vel[0],ego_vel[1]]], dtype=torch.float32)
         self.post_physics_step(nav_target)
-
+        # print(vel[1])
+        #print(self.root_states_obstacle[:,0,5:7])
         for i,l in enumerate(loc[1:]):
             self.root_states_obstacle[:,i,0] = l[0]
             self.root_states_obstacle[:,i,1] = l[1]
+            
+        for i,v in enumerate(vel[1:]):
+            xvel = v[0]
+            yvel = v[1]
+            speed = math.sqrt(xvel**2 + yvel**2)
+            angle = np.arctan2(yvel/speed,xvel/speed)
+            quat = get_quaternion_from_euler(0,0,angle)
+            self.root_states_obstacle[:,i,5] = quat[2]
+            self.root_states_obstacle[:,i,6] = quat[3]
+
         actor_ids = []
         for i in [0]:
             actor_ids+=[i*2,i*2+1]

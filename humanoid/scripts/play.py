@@ -96,26 +96,49 @@ def play(args):
         camera_properties = gymapi.CameraProperties()
         camera_properties.width = 1920
         camera_properties.height = 1080
-        h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
-        camera_offset = gymapi.Vec3(2, -2, 2)
-        camera_rotation = gymapi.Quat.from_axis_angle(gymapi.Vec3(-0.3, 0.2, 1),
-                                                    np.deg2rad(135))
-        actor_handle = env.gym.get_actor_handle(env.envs[0], 0)
-        body_handle = env.gym.get_actor_rigid_body_handle(env.envs[0], actor_handle, 0)
-        env.gym.attach_camera_to_body(
-            h1, env.envs[0], body_handle,
-            gymapi.Transform(camera_offset, camera_rotation),
-            gymapi.FOLLOW_POSITION)
+        if env.get_scenario() == 691:
+            h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+            h2 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+            env.gym.set_camera_location(h2, env.envs[0], gymapi.Vec3(15,2,5), gymapi.Vec3(7,0,0))
+        if env.get_scenario() == 692:
+            h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+            h2 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+            env.gym.set_camera_location(h2, env.envs[0], gymapi.Vec3(15,2,5), gymapi.Vec3(9.5,0,0))
+            camera_offset = gymapi.Vec3(-1.5, 0, 1.6)
+            camera_rotation = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 1, 0),
+                                                        np.deg2rad(40))
+            actor_handle = env.gym.get_actor_handle(env.envs[0], 0)
+            body_handle = env.gym.get_actor_rigid_body_handle(env.envs[0], actor_handle, 0)
+            env.gym.attach_camera_to_body(
+                h1, env.envs[0], body_handle,
+                gymapi.Transform(camera_offset, camera_rotation),
+                gymapi.FOLLOW_POSITION)
+        else:
+            h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+            h2 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+            env.gym.set_camera_location(h2, env.envs[0], gymapi.Vec3(15,2,5), gymapi.Vec3(7,0,0))
+            camera_offset = gymapi.Vec3(2, -2, 2)
+            camera_rotation = gymapi.Quat.from_axis_angle(gymapi.Vec3(-0.3, 0.2, 1),
+                                                        np.deg2rad(135))
+            actor_handle = env.gym.get_actor_handle(env.envs[0], 0)
+            body_handle = env.gym.get_actor_rigid_body_handle(env.envs[0], actor_handle, 0)
+            env.gym.attach_camera_to_body(
+                h1, env.envs[0], body_handle,
+                gymapi.Transform(camera_offset, camera_rotation),
+                gymapi.FOLLOW_POSITION)
 
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         video_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'videos')
         experiment_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'videos', train_cfg.runner.experiment_name)
-        dir = os.path.join(experiment_dir, datetime.now().strftime('%b%d_%H-%M-%S')+ args.run_name + '.mp4')
+        dir1 = os.path.join(experiment_dir, args.run_name + datetime.now().strftime('%b%d_%H-%M-%S') + '_camera1.mp4')
+        dir2 = os.path.join(experiment_dir, args.run_name + datetime.now().strftime('%b%d_%H-%M-%S') + '_camera2.mp4')
+
         if not os.path.exists(video_dir):
             os.mkdir(video_dir)
         if not os.path.exists(experiment_dir):
             os.mkdir(experiment_dir)
-        video = cv2.VideoWriter(dir, fourcc, 50.0, (1920, 1080))
+        video1 = cv2.VideoWriter(dir1, fourcc, 50.0, (1920, 1080))
+        video2 = cv2.VideoWriter(dir2, fourcc, 50.0, (1920, 1080))
 
     for i in tqdm(range(stop_state_log)):
 
@@ -136,7 +159,12 @@ def play(args):
             img = env.gym.get_camera_image(env.sim, env.envs[0], h1, gymapi.IMAGE_COLOR)
             img = np.reshape(img, (1080, 1920, 4))
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            video.write(img[..., :3])
+            img2 = env.gym.get_camera_image(env.sim, env.envs[0], h2, gymapi.IMAGE_COLOR)
+            img2 = np.reshape(img2, (1080, 1920, 4))
+            img2 = cv2.cvtColor(img2, cv2.COLOR_RGB2BGR)
+
+            video1.write(img[..., :3])
+            video2.write(img2[..., :3])
 
         logger.log_states(
             {
@@ -164,7 +192,8 @@ def play(args):
     logger.plot_states()
     
     if RENDER:
-        video.release()
+        video1.release()
+        video2.release()
 
 
     #animate_rollout(nav_rollout)
